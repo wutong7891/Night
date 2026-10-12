@@ -288,7 +288,7 @@ class SettingsViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val status = repo.setSelinuxHideEnabled(enabled)
             val accepted = status == 0 || status == -OsConstants.EAGAIN
-            val persisted = accepted && repo.persistFeatureValue("selinux_hide", enabled)
+            val persisted = accepted && repo.persistFeatureValue("night_selinux_guard", enabled)
             val actualEnabled = repo.isSelinuxHideEnabled()
             _uiState.update { it.copy(isSelinuxHideEnabled = actualEnabled) }
 

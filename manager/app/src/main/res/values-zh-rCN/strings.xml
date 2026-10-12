@@ -274,8 +274,8 @@
     <string name="download_cancel">取消</string>
     <string name="download_install">安装</string>
     <string name="settings_adb_root_summary">以 Root 权限运行 adbd 守护进程</string>
-    <string name="settings_selinux_hide">隐藏 SELinux 修改</string>
-    <string name="settings_selinux_hide_summary">阻止应用检测 SELinux 修改</string>
+    <string name="settings_selinux_hide">Night SELinux 守护</string>
+    <string name="settings_selinux_hide_summary">为普通应用提供兼容视图，不改变真实 SELinux 强制模式与审计状态</string>
     <string name="settings_selinux_hide_reboot_required">重启生效</string>
     <string name="settings_selinux_hide_failed">错误：%d</string>
     <string name="menu_sort">排序</string>

@@ -40,7 +40,7 @@ impl FeatureId {
             Self::KernelUmount => "kernel_umount",
             Self::Sulog => "sulog",
             Self::AdbRoot => "adb_root",
-            Self::SelinuxHide => "selinux_hide",
+            Self::SelinuxHide => "night_selinux_guard",
         }
     }
 
@@ -57,9 +57,13 @@ impl FeatureId {
             }
             Self::AdbRoot => "ADB Root - Enable adbd root",
             Self::SelinuxHide => {
-                "SELinux Hide - sanitize /sys/fs/selinux access results for app UIDs"
+                "Night SELinux Guard - compatibility view for unprivileged app UIDs; real enforcing and audit state stay unchanged"
             }
         }
+    }
+
+    pub fn matches_name(self, name: &str) -> bool {
+        name == self.name() || (self == Self::SelinuxHide && name == "selinux_hide")
     }
 }
 
@@ -69,7 +73,7 @@ fn parse_feature_id(name: &str) -> Result<FeatureId> {
         "kernel_umount" | "1" => Ok(FeatureId::KernelUmount),
         "sulog" | "2" => Ok(FeatureId::Sulog),
         "adb_root" | "3" => Ok(FeatureId::AdbRoot),
-        "selinux_hide" | "4" => Ok(FeatureId::SelinuxHide),
+        "night_selinux_guard" | "selinux_hide" | "4" => Ok(FeatureId::SelinuxHide),
         _ => bail!("Unknown feature: {name}"),
     }
 }
@@ -259,7 +263,9 @@ pub fn set_feature(id: &str, value: u64) -> Result<()> {
         // Find which modules manage this feature
         let managing_modules: Vec<&String> = managed_features_map
             .iter()
-            .filter(|(_, features)| features.iter().any(|f| f == feature_id.name()))
+            .filter(|(_, features)| {
+                features.iter().any(|f| feature_id.matches_name(f))
+            })
             .map(|(module_id, _)| module_id)
             .collect();
 
@@ -309,8 +315,11 @@ pub fn list_features() {
     let mut feature_to_modules: HashMap<String, Vec<String>> = HashMap::new();
     for (module_id, feature_list) in &managed_features_map {
         for feature_name in feature_list {
+            let canonical_name = parse_feature_id(feature_name)
+                .map(FeatureId::name)
+                .unwrap_or(feature_name);
             feature_to_modules
-                .entry(feature_name.clone())
+                .entry(canonical_name.to_string())
                 .or_default()
                 .push(module_id.clone());
         }
@@ -426,7 +435,7 @@ pub fn check_feature(id: &str) -> Result<()> {
     let managed_features_map = crate::module::get_managed_features().unwrap_or_default();
     let is_managed = managed_features_map
         .values()
-        .any(|features| features.iter().any(|f| f == feature_id.name()));
+        .any(|features| features.iter().any(|f| feature_id.matches_name(f)));
 
     if is_managed {
         println!("managed");
@@ -505,4 +514,27 @@ pub fn init_features() -> Result<()> {
     log::info!("Saved feature configuration to file");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FeatureId, parse_feature_id};
+
+    #[test]
+    fn night_selinux_guard_uses_canonical_name() {
+        assert_eq!(FeatureId::SelinuxHide.name(), "night_selinux_guard");
+        assert_eq!(
+            parse_feature_id("night_selinux_guard").unwrap(),
+            FeatureId::SelinuxHide
+        );
+    }
+
+    #[test]
+    fn legacy_selinux_hide_name_remains_compatible() {
+        assert_eq!(
+            parse_feature_id("selinux_hide").unwrap(),
+            FeatureId::SelinuxHide
+        );
+        assert!(FeatureId::SelinuxHide.matches_name("selinux_hide"));
+    }
 }

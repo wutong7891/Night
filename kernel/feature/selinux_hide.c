@@ -33,6 +33,8 @@ static DEFINE_MUTEX(selinux_hide_mutex);
 static bool ksu_selinux_hide_enabled __read_mostly = false;
 static bool ksu_selinux_hide_running __read_mostly = false;
 
+#define NIGHT_SELINUX_GUARD_NAME "night_selinux_guard"
+
 enum sel_inos {
     SEL_ROOT_INO = 2,
     SEL_LOAD, /* load policy */
@@ -317,18 +319,18 @@ static int my_sel_open_handle_status(struct inode *inode, struct file *filp)
 }
 
 static void hook_selinux_status_open();
-static void ksu_selinux_hide_unhook();
+static int ksu_selinux_hide_unhook();
 static int ksu_selinux_hide_enable()
 {
     int ret;
-    pr_info("selinux_hide: init selinux hide\n");
+    pr_info(NIGHT_SELINUX_GUARD_NAME ": enabling compatibility view\n");
     if (!backup_sepolicy) {
-        pr_err("no backup sepolicy available, please save feature and reboot to retry!\n");
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": no backup sepolicy available; persist the setting and reboot\n");
         return -EAGAIN;
     }
     selinux_write_op = find_kernel_symbol_exact("write_op");
     if (!selinux_write_op) {
-        pr_err("selinux_hide: no write_op found!\n");
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": no write_op found\n");
         return -ENOSYS;
     }
     hook_selinux_status_open();
@@ -353,7 +355,7 @@ static int ksu_selinux_hide_enable()
     orig_context_write = *context_write;
     ret = ksu_patch_text(context_write, &my, sizeof(my), KSU_PATCH_TEXT_FLUSH_DCACHE);
     if (ret) {
-        pr_err("selinux_hide: init: patch_text context_write err: %d\n", ret);
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": patch context_write failed: %d\n", ret);
         goto unhook;
     }
 
@@ -363,56 +365,71 @@ static int ksu_selinux_hide_enable()
     orig_access_write = *access_write;
     ret = ksu_patch_text(access_write, &my, sizeof(my), KSU_PATCH_TEXT_FLUSH_DCACHE);
     if (ret) {
-        pr_err("selinux_hide: init: patch_text access_write err: %d\n", ret);
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": patch access_write failed: %d\n", ret);
         goto unhook;
     }
 
     ret = ksu_lsm_hook(&selinux_setprocattr_hook);
     if (ret) {
-        pr_err("selinux_hide: init: selinux_setprocattr_hook err: %d\n", ret);
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": patch setprocattr failed: %d\n", ret);
         goto unhook;
     }
 
     return 0;
 
 unhook:
-    ksu_selinux_hide_unhook();
-    return -ENOSYS;
+    if (ksu_selinux_hide_unhook())
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": rollback was incomplete\n");
+    return ret;
 }
 
-static void ksu_selinux_hide_unhook()
+static int ksu_selinux_hide_unhook()
 {
     int ret;
+    int first_error = 0;
+
     if (orig_context_write) {
         ret =
             ksu_patch_text(context_write, &orig_context_write, sizeof(orig_context_write), KSU_PATCH_TEXT_FLUSH_DCACHE);
-        orig_context_write = NULL;
         if (ret) {
-            pr_err("selinux_hide: exit: patch_text context_write err: %d\n", ret);
+            pr_err(NIGHT_SELINUX_GUARD_NAME ": restore context_write failed: %d\n", ret);
+            first_error = ret;
+        } else {
+            orig_context_write = NULL;
         }
     }
     if (orig_access_write) {
         ret = ksu_patch_text(access_write, &orig_access_write, sizeof(orig_access_write), KSU_PATCH_TEXT_FLUSH_DCACHE);
-        orig_access_write = NULL;
         if (ret) {
-            pr_err("selinux_hide: exit: patch_text access_write err: %d\n", ret);
+            pr_err(NIGHT_SELINUX_GUARD_NAME ": restore access_write failed: %d\n", ret);
+            if (!first_error)
+                first_error = ret;
+        } else {
+            orig_access_write = NULL;
         }
     }
     if (sel_open_handle_status_slot && orig_sel_open_handle_status) {
         ret = ksu_patch_text(sel_open_handle_status_slot, &orig_sel_open_handle_status,
                              sizeof(orig_sel_open_handle_status), KSU_PATCH_TEXT_FLUSH_DCACHE);
-        orig_sel_open_handle_status = NULL;
         if (ret) {
-            pr_err("selinux_hide: exit: patch_text sel_open_handle_status err: %d\n", ret);
+            pr_err(NIGHT_SELINUX_GUARD_NAME ": restore status open failed: %d\n", ret);
+            if (!first_error)
+                first_error = ret;
+        } else {
+            orig_sel_open_handle_status = NULL;
         }
     }
     ksu_lsm_unhook(&selinux_setprocattr_hook);
+    if (selinux_setprocattr_hook.entry && !first_error)
+        first_error = -EIO;
+
+    return first_error;
 }
 
-static void ksu_selinux_hide_disable()
+static int ksu_selinux_hide_disable()
 {
-    pr_info("selinux_hide: exit selinux hide\n");
-    ksu_selinux_hide_unhook();
+    pr_info(NIGHT_SELINUX_GUARD_NAME ": disabling compatibility view\n");
+    return ksu_selinux_hide_unhook();
 }
 
 static int selinux_hide_feature_get(u64 *value)
@@ -425,20 +442,25 @@ static int selinux_hide_feature_set(u64 value)
 {
     bool enable = value != 0;
     int ret = 0;
-    pr_info("selinux_hide: set to %d\n", enable);
+    pr_info(NIGHT_SELINUX_GUARD_NAME ": requested state=%d\n", enable);
     mutex_lock(&selinux_hide_mutex);
-    ksu_selinux_hide_enabled = enable;
     if (enable) {
         if (!ksu_selinux_hide_running) {
             ret = ksu_selinux_hide_enable();
             if (!ret) {
                 ksu_selinux_hide_running = true;
+                WRITE_ONCE(ksu_selinux_hide_enabled, true);
             }
         }
     } else {
         if (ksu_selinux_hide_running) {
-            ksu_selinux_hide_disable();
-            ksu_selinux_hide_running = false;
+            ret = ksu_selinux_hide_disable();
+            if (!ret) {
+                ksu_selinux_hide_running = false;
+                WRITE_ONCE(ksu_selinux_hide_enabled, false);
+            }
+        } else {
+            WRITE_ONCE(ksu_selinux_hide_enabled, false);
         }
     }
     mutex_unlock(&selinux_hide_mutex);
@@ -447,7 +469,7 @@ static int selinux_hide_feature_set(u64 value)
 
 static const struct ksu_feature_handler selinux_hide_handler = {
     .feature_id = KSU_FEATURE_SELINUX_HIDE,
-    .name = "selinux_hide",
+    .name = NIGHT_SELINUX_GUARD_NAME,
     .get_handler = selinux_hide_feature_get,
     .set_handler = selinux_hide_feature_set,
 };
@@ -459,7 +481,7 @@ void ksu_selinux_hide_handle_second_stage()
     if (fake_status) {
         static_key_disable(&fake_status_initialize_key.key);
     } else {
-        pr_warn("selinux_hide: fake status need late initialization\n");
+        pr_warn(NIGHT_SELINUX_GUARD_NAME ": compatibility status needs late initialization\n");
     }
 }
 
@@ -467,7 +489,7 @@ void ksu_selinux_hide_handle_post_fs_data()
 {
     static_key_disable(&fake_status_initialize_key.key);
     if (!fake_status) {
-        pr_err("selinux_hide: fake status is not initialized after post-fs-data!\n");
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": compatibility status was not initialized after post-fs-data\n");
     }
 }
 
@@ -478,7 +500,7 @@ static void hook_selinux_status_open()
     if (!sel_open_handle_status_slot) {
         struct file_operations *ops = find_kernel_symbol_exact("sel_handle_status_ops");
         if (!ops) {
-            pr_err("selinux_hide: sel_handle_status_ops not found, fake status will not work\n");
+            pr_err(NIGHT_SELINUX_GUARD_NAME ": sel_handle_status_ops not found; status view unavailable\n");
             return;
         }
         sel_open_handle_status_slot = &ops->open;
@@ -487,7 +509,7 @@ static void hook_selinux_status_open()
     orig_sel_open_handle_status = *sel_open_handle_status_slot;
     int ret = ksu_patch_text(sel_open_handle_status_slot, &new_fn, sizeof(new_fn), KSU_PATCH_TEXT_FLUSH_DCACHE);
     if (ret) {
-        pr_err("selinux_hide: init: patch_text sel_open_handle_status err: %d\n", ret);
+        pr_err(NIGHT_SELINUX_GUARD_NAME ": patch status open failed: %d\n", ret);
         sel_open_handle_status_slot = NULL;
         orig_sel_open_handle_status = NULL;
     }
@@ -496,7 +518,7 @@ static void hook_selinux_status_open()
 void __init ksu_selinux_hide_init()
 {
     if (ksu_register_feature_handler(&selinux_hide_handler)) {
-        pr_err("Failed to register selinux_hide feature handler\n");
+        pr_err("Failed to register " NIGHT_SELINUX_GUARD_NAME " feature handler\n");
     }
     if (ksu_late_loaded) {
         initialize_fake_status();
@@ -510,8 +532,10 @@ void __exit ksu_selinux_hide_exit()
 {
     mutex_lock(&selinux_hide_mutex);
     if (ksu_selinux_hide_running) {
-        ksu_selinux_hide_disable();
-        ksu_selinux_hide_running = false;
+        if (!ksu_selinux_hide_disable()) {
+            ksu_selinux_hide_running = false;
+            WRITE_ONCE(ksu_selinux_hide_enabled, false);
+        }
     }
     mutex_unlock(&selinux_hide_mutex);
     ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
@@ -526,7 +550,7 @@ void ksu_selinux_hide_drop_backup_if_unused()
 {
     mutex_lock(&selinux_hide_mutex);
     if (!ksu_selinux_hide_running && backup_sepolicy) {
-        pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
+        pr_info(NIGHT_SELINUX_GUARD_NAME ": inactive; dropping backup sepolicy\n");
         sidtab_destroy(backup_sepolicy->sidtab);
         kfree(backup_sepolicy->sidtab);
         ksu_destroy_sepolicy(backup_sepolicy);

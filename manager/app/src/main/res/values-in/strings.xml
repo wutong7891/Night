@@ -189,8 +189,8 @@
     <string name="settings_sucompat_summary">Izinkan akses Root melalui /system/bin/su, pada proses baru yang dibuat</string>
     <string name="settings_kernel_umount">Umount kernel</string>
     <string name="settings_kernel_umount_summary">Unmount modul dari kernel pada Profil Aplikasi</string>
-    <string name="settings_selinux_hide">Sembunyikan modifikasi SELinux</string>
-    <string name="settings_selinux_hide_summary">Mencegah aplikasi mendeteksi modifikasi SELinux</string>
+    <string name="settings_selinux_hide">Night SELinux Guard</string>
+    <string name="settings_selinux_hide_summary">Menyediakan tampilan kompatibilitas aplikasi tanpa mengubah mode enforcing dan audit SELinux yang sebenarnya</string>
     <string name="settings_selinux_hide_reboot_required">Mulai ulang untuk menerapkan</string>
     <string name="settings_selinux_hide_failed">Kesalahan: %d</string>
     <string name="settings_sulog">SU Log</string>

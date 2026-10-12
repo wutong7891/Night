@@ -160,6 +160,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify Night SELinux Guard integration
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          grep -q 'NIGHT_SELINUX_GUARD_NAME "night_selinux_guard"' kernel/feature/selinux_hide.c
+          grep -q 'Self::SelinuxHide => "night_selinux_guard"' userspace/ksud/src/feature.rs
+          grep -q 'getFeatureStatus("night_selinux_guard")' manager/app/src/main/java/me/weishu/kernelsu/data/repository/SettingsRepositoryImpl.kt
+          grep -q 'persistFeatureValue("night_selinux_guard", enabled)' manager/app/src/main/java/me/weishu/kernelsu/ui/viewmodel/SettingsViewModel.kt
+          grep -q '<string name="settings_selinux_hide">Night SELinux Guard</string>' manager/app/src/main/res/values/strings.xml
+
       - name: Embed Night certificate-bound KMI modules
         uses: actions/download-artifact@v8
         with:

@@ -190,7 +190,7 @@ class SettingsRepositoryImpl : SettingsRepository {
 
     override fun setKernelUmountEnabled(enabled: Boolean): Boolean = Natives.setKernelUmountEnabled(enabled)
 
-    override suspend fun getSelinuxHideStatus(): String = getFeatureStatus("selinux_hide")
+    override suspend fun getSelinuxHideStatus(): String = getFeatureStatus("night_selinux_guard")
 
     override fun isSelinuxHideEnabled(): Boolean = Natives.isSelinuxHideEnabled()
 

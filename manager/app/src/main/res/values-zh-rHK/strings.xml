@@ -189,8 +189,8 @@
     <string name="settings_sucompat_summary">允許新的處理程序透過 /system/bin/su 獲取 Root 權限</string>
     <string name="settings_kernel_umount">核心層級 Umount</string>
     <string name="settings_kernel_umount_summary">從核心層級（kernel-level）對選定的 App 移除模組修改</string>
-    <string name="settings_selinux_hide">隱藏 SELinux 修改</string>
-    <string name="settings_selinux_hide_summary">防止 App 偵測 SELinux 修改</string>
+    <string name="settings_selinux_hide">Night SELinux 守護</string>
+    <string name="settings_selinux_hide_summary">為普通 App 提供相容視圖，不改變真實 SELinux 強制模式及審計狀態</string>
     <string name="settings_selinux_hide_reboot_required">重新啟動後生效</string>
     <string name="settings_selinux_hide_failed">錯誤：%d</string>
     <string name="settings_sulog">SU Log</string>
